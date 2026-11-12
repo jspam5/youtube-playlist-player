@@ -16,7 +16,6 @@
     #player {
       width: 100%;
       height: 100%;
-      pointer-events: none;
     }
 
     #vod-info {
@@ -43,9 +42,13 @@
 <body>
 
   <div id="player"></div>
+
   <div id="vod-info">
     <span id="vod-title"></span>
-    <a id="vod-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+    <a id="vod-link" href="https://youtube.com/@JacobStreamsVODS"
+       target="_blank" rel="noopener noreferrer">
+      youtube.com/@JacobStreamsVODS
+    </a>
   </div>
 
   <script>
@@ -55,8 +58,9 @@
     let player;
     let shuffleEnabled = true;
     let shuffleApplied = false;
+    let lastVideoId = null;
+    let vodTimeout = null;
 
-    // Load YouTube API
     const ytScript = document.createElement("script");
     ytScript.src = "https://www.youtube.com/iframe_api";
     document.head.appendChild(ytScript);
@@ -67,7 +71,7 @@
         height: "100%",
         playerVars: {
           autoplay: 1,
-          controls: 0,
+          controls: 1,
           mute: 0,
           playsinline: 1,
           rel: 0,
@@ -88,12 +92,33 @@
       });
     }
 
+    function hideVodInfo() {
+      document.getElementById("vod-info").style.display = "none";
+
+      if (vodTimeout) {
+        clearTimeout(vodTimeout);
+        vodTimeout = null;
+      }
+    }
+
     function onPlayerStateChange(event) {
-      if (event.data === YT.PlayerState.PLAYING && !shuffleApplied) {
-        if (shuffleEnabled) {
-          player.setShuffle(true);
+      if (event.data === YT.PlayerState.PLAYING) {
+        const video = player.getVideoData();
+
+        if (video && video.video_id) {
+          if (lastVideoId !== null && video.video_id !== lastVideoId) {
+            hideVodInfo();
+          }
+
+          lastVideoId = video.video_id;
         }
-        shuffleApplied = true;
+
+        if (!shuffleApplied) {
+          if (shuffleEnabled) {
+            player.setShuffle(true);
+          }
+          shuffleApplied = true;
+        }
       }
     }
 
@@ -103,17 +128,19 @@
       const video = player.getVideoData();
       if (!video || !video.video_id) return;
 
-      const url = "https://www.youtube.com/watch?v=" + video.video_id;
-
       document.getElementById("vod-title").textContent = video.title;
-      const link = document.getElementById("vod-link");
-      link.href = url;
-      link.textContent = url;
-
       document.getElementById("vod-info").style.display = "block";
+
+      if (vodTimeout) {
+        clearTimeout(vodTimeout);
+      }
+
+      vodTimeout = setTimeout(function() {
+        hideVodInfo();
+      }, 10000);
     }
 
-    // Anonymous Twitch chat connection test
+    // Anonymous Twitch chat connection
     const socket = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
 
     socket.onopen = function() {
@@ -159,11 +186,7 @@
           shuffleEnabled = !shuffleEnabled;
           shuffleApplied = false;
 
-          if (shuffleEnabled) {
-            player.setShuffle(true);
-          } else {
-            player.setShuffle(false);
-          }
+          player.setShuffle(shuffleEnabled);
         }
 
         if (message === "!vod") {
