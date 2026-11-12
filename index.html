@@ -2,9 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube Playlist Player</title>
-
+  <title>Twitch Playlist Player</title>
   <style>
     html, body {
       margin: 0;
@@ -12,7 +10,7 @@
       width: 100%;
       height: 100%;
       overflow: hidden;
-      background: #000;
+      background: transparent;
     }
 
     #player {
@@ -21,75 +19,167 @@
       pointer-events: none;
     }
 
-    iframe {
-      pointer-events: none;
+    #vod-info {
+      position: fixed;
+      left: 20px;
+      bottom: 20px;
+      padding: 10px 14px;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      font-family: Arial, sans-serif;
+      font-size: 16px;
+      border-radius: 6px;
+      display: none;
+      z-index: 10;
+    }
+
+    #vod-info a {
+      color: #9bd0ff;
+      display: block;
+      margin-top: 5px;
     }
   </style>
 </head>
-
 <body>
+
   <div id="player"></div>
+  <div id="vod-info">
+    <span id="vod-title"></span>
+    <a id="vod-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+  </div>
 
   <script>
     const PLAYLIST_ID = "PL_0qstDTXacaJx6V3ycEk4C-xHf6zAt5_";
+    const TWITCH_CHANNEL = "jstreamsbot";
 
     let player;
-    let shuffleEnabled = false;
+    let shuffleEnabled = true;
+    let shuffleApplied = false;
+
+    // Load YouTube API
+    const ytScript = document.createElement("script");
+    ytScript.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(ytScript);
 
     function onYouTubeIframeAPIReady() {
       player = new YT.Player("player", {
         width: "100%",
         height: "100%",
-
         playerVars: {
           autoplay: 1,
           controls: 0,
-          playsinline: 1,
           mute: 0,
-          cc_load_policy: 0,
-          modestbranding: 1,
+          playsinline: 1,
           rel: 0,
           iv_load_policy: 3,
-          origin: window.location.origin
+          cc_load_policy: 0
         },
-
         events: {
-          onReady: onPlayerReady,
-          onError: onPlayerError,
+          onReady: function(event) {
+            event.target.loadPlaylist({
+              listType: "playlist",
+              list: PLAYLIST_ID,
+              index: 0
+            });
+            event.target.setLoop(true);
+          },
           onStateChange: onPlayerStateChange
         }
       });
     }
 
-    function onPlayerReady() {
-      player.unMute();
-
-      player.loadPlaylist({
-        listType: "playlist",
-        list: PLAYLIST_ID,
-        index: 0
-      });
-
-      player.setLoop(true);
-    }
-
-    function onPlayerError(event) {
-      console.error("YouTube error:", event.data);
-    }
-
     function onPlayerStateChange(event) {
-      if (event.data === YT.PlayerState.PLAYING) {
-
-        if (!shuffleEnabled) {
+      if (event.data === YT.PlayerState.PLAYING && !shuffleApplied) {
+        if (shuffleEnabled) {
           player.setShuffle(true);
-          shuffleEnabled = true;
         }
-
-        player.unloadModule("captions");
+        shuffleApplied = true;
       }
     }
+
+    function showCurrentVod() {
+      if (!player || !player.getVideoData) return;
+
+      const video = player.getVideoData();
+      if (!video || !video.video_id) return;
+
+      const url = "https://www.youtube.com/watch?v=" + video.video_id;
+
+      document.getElementById("vod-title").textContent = video.title;
+      const link = document.getElementById("vod-link");
+      link.href = url;
+      link.textContent = url;
+
+      document.getElementById("vod-info").style.display = "block";
+    }
+
+    // Anonymous Twitch chat connection test
+    const socket = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
+
+    socket.onopen = function() {
+      console.log("Connected to Twitch chat anonymously");
+
+      socket.send("CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership");
+      socket.send("PASS SCHMOOPIIE");
+      socket.send("NICK justinfan" + Math.floor(Math.random() * 90000 + 10000));
+      socket.send("JOIN #" + TWITCH_CHANNEL);
+    };
+
+    socket.onmessage = function(event) {
+      const lines = event.data.split("\r\n");
+
+      lines.forEach(function(line) {
+        if (!line) return;
+
+        if (line.startsWith("PING")) {
+          socket.send("PONG :tmi.twitch.tv");
+          return;
+        }
+
+        const messageMatch = line.match(/PRIVMSG #\w+ :(.*)$/i);
+        if (!messageMatch) return;
+
+        const message = messageMatch[1].trim().toLowerCase();
+
+        if (!player || !player.playVideo) return;
+
+        if (message === "!play") {
+          player.playVideo();
+        }
+
+        if (message === "!pause") {
+          player.pauseVideo();
+        }
+
+        if (message === "!skip") {
+          player.nextVideo();
+        }
+
+        if (message === "!shuffle") {
+          shuffleEnabled = !shuffleEnabled;
+          shuffleApplied = false;
+
+          if (shuffleEnabled) {
+            player.setShuffle(true);
+          } else {
+            player.setShuffle(false);
+          }
+        }
+
+        if (message === "!vod") {
+          showCurrentVod();
+        }
+      });
+    };
+
+    socket.onerror = function(error) {
+      console.log("Twitch chat connection error:", error);
+    };
+
+    socket.onclose = function() {
+      console.log("Twitch chat connection closed");
+    };
   </script>
 
-  <script src="https://www.youtube.com/iframe_api"></script>
 </body>
 </html>
