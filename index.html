@@ -45,7 +45,7 @@
 
   <div id="vod-info">
     <span id="vod-title"></span>
-    <a id="vod-link" href="https://youtube.com/@JacobStreamsVODS"
+    <a href="https://youtube.com/@JacobStreamsVODS"
        target="_blank" rel="noopener noreferrer">
       youtube.com/@JacobStreamsVODS
     </a>
@@ -140,6 +140,21 @@
       }, 10000);
     }
 
+    // Check whether a Twitch user is the broadcaster or a moderator
+    function isModeratorOrBroadcaster(line, username, tags) {
+      const badges = tags.badges || "";
+      const userType = tags["user-type"] || "";
+
+      return (
+        username.toLowerCase() === TWITCH_CHANNEL ||
+        badges.split(",").some(function(badge) {
+          return badge.startsWith("broadcaster/") ||
+                 badge.startsWith("moderator/");
+        }) ||
+        userType === "mod"
+      );
+    }
+
     // Anonymous Twitch chat connection
     const socket = new WebSocket("wss://irc-ws.chat.twitch.tv:443");
 
@@ -163,12 +178,36 @@
           return;
         }
 
-        const messageMatch = line.match(/PRIVMSG #\w+ :(.*)$/i);
+        // Extract Twitch message tags
+        let tags = {};
+
+        if (line.startsWith("@")) {
+          const tagSection = line.substring(1, line.indexOf(" "));
+          tagSection.split(";").forEach(function(tag) {
+            const parts = tag.split("=");
+            tags[parts[0]] = parts[1] || "";
+          });
+        }
+
+        // Extract username and chat message
+        const messageMatch = line.match(/:([^!]+)!.* PRIVMSG #\w+ :(.*)$/i);
         if (!messageMatch) return;
 
-        const message = messageMatch[1].trim().toLowerCase();
+        const username = messageMatch[1].toLowerCase();
+        const message = messageMatch[2].trim().toLowerCase();
 
         if (!player || !player.playVideo) return;
+
+        // !vod remains available to everyone
+        if (message === "!vod") {
+          showCurrentVod();
+          return;
+        }
+
+        // All playback commands require broadcaster or moderator
+        if (!isModeratorOrBroadcaster(line, username, tags)) {
+          return;
+        }
 
         if (message === "!play") {
           player.playVideo();
@@ -185,12 +224,7 @@
         if (message === "!shuffle") {
           shuffleEnabled = !shuffleEnabled;
           shuffleApplied = false;
-
           player.setShuffle(shuffleEnabled);
-        }
-
-        if (message === "!vod") {
-          showCurrentVod();
         }
       });
     };
