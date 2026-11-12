@@ -38,6 +38,7 @@
   <script>
     const PLAYLIST_ID = "PL_0qstDTXacaJx6V3ycEk4C-xHf6zAt5_";
     let player;
+    let shuffleEnabled = false;
 
     function onYouTubeIframeAPIReady() {
       player = new YT.Player("player", {
@@ -67,7 +68,6 @@
         index: 0
       });
 
-      player.setShuffle(true);
       player.setLoop(true);
     }
 
@@ -81,8 +81,15 @@
 
       if (event.data === YT.PlayerState.PLAYING) {
         status.textContent = "Playing playlist";
+
+        if (!shuffleEnabled) {
+          player.setShuffle(true);
+          shuffleEnabled = true;
+        }
+
       } else if (event.data === YT.PlayerState.PAUSED) {
         status.textContent = "Paused";
+
       } else if (event.data === YT.PlayerState.ENDED) {
         status.textContent = "Video ended";
       }
